@@ -1,103 +1,97 @@
 # vrc-ytdlp-resolver
 
-A small web tool that resolves direct playable video URLs from YouTube using `yt-dlp`.  
-This is useful for VRChat world video players that sometimes fail to play YouTube links due to bot protection or signature restrictions.
+A small web tool that resolves temporary direct video stream URLs from YouTube using `yt-dlp`.
 
-Instead of relying on in-world extraction, this tool resolves the video **server-side** and outputs a temporary direct streaming link (`*.googlevideo.com`).  
-You can then paste this link into a VRChat video player that accepts raw media URLs.
+This can be useful for VRChat worlds where the built-in video extraction sometimes fails or gets rate-limited.  
+Instead of resolving the link inside VRChat, this tool resolves it **server-side** and returns a direct playback URL (`*.googlevideo.com`).
+
+---
+
+## ⚠️ Important Behavior (Read This First)
+
+YouTube's streaming URLs are **time-limited** and often **IP-bound**.
+
+This means:
+
+- The direct video link usually **only works for the same public IP** that requested it.
+- If **another user** in VRChat tries to use that same link from a **different network**, the video may **fail to load**.
+- If your VRChat world is public and players are on different networks → **you must run this tool on a shared server** and the world should receive links resolved **by that shared server**, not by individual players.
+
+### In short:
+
+| Who resolves the URL? | Who can watch? |
+|-----------------------|---------------|
+| A player on home Wi-Fi | Only that player (same IP) |
+| A dedicated server | Anyone connected to the VRChat world |
+
+So if you want **everyone** in the instance to be able to watch:
+→ **Host this tool on a server (VPS / Docker / Linux box) and resolve the URLs there.**
 
 ---
 
 ## ✨ Features
 
-- Resolve YouTube watch URLs into playable direct video URLs
-- Prefers **progressive MP4 (H.264 + AAC)** for VRChat compatibility
-- Automatically falls back to adaptive video + audio streams if required
-- Web UI for easy usage
+- Resolves YouTube links to direct streaming URLs
+- Prefers **progressive MP4 (H.264 + AAC)** when available
+- Falls back to adaptive (video+audio split) if necessary
 - Shows:
-  - **Local `yt-dlp` version**
-  - **Latest available `yt-dlp` version from GitHub**
-  - Update availability notification
+  - Local `yt-dlp` version
+  - Latest available version from GitHub
+  - Update availability notice
+- Clean web UI (no CLI required)
 
 ---
 
 ## 📦 Requirements
 
 - Node.js **18+**
-- `yt-dlp` installed and available in the system PATH  
-  (or specify a custom path via `YT_DLP_PATH`)
+- `yt-dlp` installed (or provided via Docker image)
+- If running in VRChat shared environments: run this **on a server**, not on players’ PCs
 
 ---
 
-## 🧱 Installation
+## 🐳 Docker (Recommended for Server Deployment)
+
+```bash
+docker run -d \
+  --name vrc-ytdlp-resolver \
+  -p 8080:3000 \
+  mrunknownde/vrc-ytdlp-resolver:latest
+````
+
+Web UI → [http://localhost:8080](http://localhost:8080)
+
+---
+
+## 🧱 Local Install (Non-Docker)
 
 ```bash
 git clone https://github.com/MrUnknownDE/vrc-ytdlp-resolver
 cd vrc-ytdlp-resolver
 npm install
-````
-
-Make sure `yt-dlp` is installed:
-
-```bash
-# Linux / Mac
-curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o yt-dlp
-chmod +x yt-dlp
-sudo mv yt-dlp /usr/local/bin/
-
-# Windows (PowerShell)
-winget install yt-dlp.yt-dlp
-```
-
-(Optional) Set a custom path:
-
-```bash
-export YT_DLP_PATH="/path/to/yt-dlp"
-```
-
----
-
-## 🚀 Run
-
-```bash
 npm run dev
 ```
 
-The web interface will be available at:
+---
 
-```
-http://localhost:3000
-```
+## Usage Instructions
+
+1. Open the web interface
+2. Paste a YouTube URL
+3. Click **Resolve**
+4. Copy the direct link
+5. Paste into your VRChat video player
+
+> Remember: if you are **not** running this on a server, only **you** will be able to watch the video.
 
 ---
 
-## 🐳 Docker
+## 🔄 Why URLs Expire
 
-```bash
-docker build -t vrc-ytdlp-resolver .
-docker run --rm -p 3000:3000 vrc-ytdlp-resolver
-```
+YouTube uses **signed playback tokens**:
 
----
+* Expire after minutes/hours
+* Often tied to your **public IP**
+* Cannot be manually extended
 
-## 🔧 Usage
-
-1. Open the web UI.
-2. Paste a YouTube watch link.
-3. Click **Resolve**.
-4. Copy the direct playback URL.
-5. Paste it into your VRChat video player.
-
-> ⚠️ Direct streaming URLs are temporary.
-> They may expire after several minutes or hours.
-> If playback stops later, simply resolve again.
-
----
-
-## ⚠️ Disclaimer
-
-This tool **does not download or store media.**
-It only extracts direct streaming URLs that YouTube already provides for playback.
-
-Respect YouTube’s Terms of Service and copyright laws.
-Do not use this tool for piracy.
+Just resolve again when needed.
