@@ -1,5 +1,5 @@
 {
-  "name": "vrc-ytdlp-export",
+  "name": "vrc-ytdlp-resolver",
   "version": "1.0.0",
   "private": true,
   "type": "module",
