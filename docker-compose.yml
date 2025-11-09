@@ -1,0 +1,21 @@
+services:
+  vrc-ytdlp-resolver:
+    image: mrunknownde/vrc-ytdlp-resolver
+    container_name: vrc-ytdlp-resolver
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+    # Einfache Liveness-Prüfung
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/version"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+    # Minimal-Logging; nach Bedarf anpassen
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
