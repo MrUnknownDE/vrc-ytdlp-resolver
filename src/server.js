@@ -1,4 +1,3 @@
-// /src/server.js
 import express from "express";
 import morgan from "morgan";
 import { spawn } from "node:child_process";
@@ -19,7 +18,9 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 const YT_DLP = process.env.YT_DLP_PATH || "yt-dlp";
 const limit = pLimit(2); // simple per-process concurrency limit
 
-// ---- Version detection & refresh (local + latest from GitHub) ----
+// -------------------------
+// Version detection (local + latest from GitHub)
+// -------------------------
 let localYtDlpVersion = "unknown";
 let latestYtDlpVersion = null;
 
@@ -29,7 +30,7 @@ function fetchLatestYtDlpVersion() {
       {
         hostname: "api.github.com",
         path: "/repos/yt-dlp/yt-dlp/releases/latest",
-        headers: { "User-Agent": "vrc-ytdlp-webtool" }
+        headers: { "User-Agent": "vrc-ytdlp-resolver" }
       },
       (res) => {
         let data = "";
@@ -59,7 +60,7 @@ async function detectLocalYtDlpVersion() {
 }
 
 (async () => {
-  localYtDlpVersion = await detectLocalYtDlpVersion();
+  localYtDlpVersion = await detectLocalYtDlpVersion().catch(() => "unknown");
   try {
     latestYtDlpVersion = await fetchLatestYtDlpVersion();
   } catch {
@@ -75,47 +76,19 @@ async function detectLocalYtDlpVersion() {
   }, 6 * 60 * 60 * 1000);
 })();
 
-// ---- Core: resolve direct media URL via yt-dlp ----
-async function resolveDirectUrl(inputUrl) {
-  const formatSelector =
-    // 1) Progressive MP4 with audio (H.264 + AAC), https
-    "best[acodec!=none][vcodec*=avc][ext=mp4][protocol*=https]/" +
-    // 2) Any progressive with audio
-    "best[acodec!=none][protocol*=https]/" +
-    // 3) Anything with audio (may be HLS/DASH)
-    "best[acodec!=none]/" +
-    // 4) Fallback best
-    "best";
-
-  const json = await execJson([
-    "-J",
-    "-f",
-    formatSelector,
-    "--no-warnings",
-    "--no-playlist",
-    inputUrl
-  ]);
-
-  // Case A: yt-dlp returns a single playable URL (progressive)
-  if (json.url) {
-    return { url: json.url, note: "Direct stream (single URL)." };
+// -------------------------
+// Helpers
+// -------------------------
+function stripIpParam(directUrl) {
+  try {
+    const u = new URL(directUrl);
+    // remove IP-scoping params without touching signature/expiry/etc.
+    u.searchParams.delete("ip");
+    u.searchParams.delete("ipbits");
+    return u.toString();
+  } catch {
+    return directUrl; // if parsing fails, return original
   }
-
-  // Case B: adaptive (separate video/audio)
-  if (Array.isArray(json.requested_formats) && json.requested_formats.length) {
-    const vid = json.requested_formats.find((f) => f.vcodec && f.acodec === "none");
-    const aud = json.requested_formats.find((f) => f.acodec && f.vcodec === "none");
-    if (vid?.url && aud?.url) {
-      return {
-        url: vid.url,
-        audioUrl: aud.url,
-        note:
-          "Adaptive streams (separate video/audio). Many in-world players expect a single URL."
-      };
-    }
-  }
-
-  throw new Error("Could not extract a playable URL.");
 }
 
 function execJson(args) {
@@ -141,7 +114,54 @@ function execJson(args) {
   });
 }
 
-// ---- API routes ----
+// -------------------------
+// Core: resolve direct media URL via yt-dlp
+// -------------------------
+async function resolveDirectUrl(inputUrl) {
+  const formatSelector =
+    // 1) Progressive MP4 with audio (H.264 + AAC), https
+    "best[acodec!=none][vcodec*=avc][ext=mp4][protocol*=https]/" +
+    // 2) Any progressive with audio
+    "best[acodec!=none][protocol*=https]/" +
+    // 3) Anything with audio (may be HLS/DASH)
+    "best[acodec!=none]/" +
+    // 4) Fallback best
+    "best";
+
+  const json = await execJson([
+    "-J",
+    "-f",
+    formatSelector,
+    "--no-warnings",
+    "--no-playlist",
+    inputUrl
+  ]);
+
+  // Case A: yt-dlp returns a single playable URL (progressive)
+  if (json.url) {
+    return { url: stripIpParam(json.url), note: "Direct stream (single URL)." };
+  }
+
+  // Case B: adaptive (separate video/audio)
+  if (Array.isArray(json.requested_formats) && json.requested_formats.length) {
+    const vid = json.requested_formats.find((f) => f.vcodec && f.acodec === "none");
+    const aud = json.requested_formats.find((f) => f.acodec && f.vcodec === "none");
+    if (vid?.url && aud?.url) {
+      return {
+        url: stripIpParam(vid.url),
+        audioUrl: stripIpParam(aud.url),
+        note:
+          "Adaptive streams (separate video/audio). Many in-world players expect a single URL."
+      };
+    }
+  }
+
+  throw new Error("Could not extract a playable URL.");
+}
+
+// -------------------------
+// Routes
+// -------------------------
 app.post("/api/resolve", async (req, res) => {
   const { url } = req.body || {};
   if (
@@ -171,6 +191,9 @@ app.get("/api/version", (req, res) => {
   });
 });
 
+// -------------------------
+// Server
+// -------------------------
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`VRC yt-dlp WebTool running at http://localhost:${port}`);
